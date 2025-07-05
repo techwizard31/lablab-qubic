@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { Chroma } from "langchain/vectorstores/chroma";
-import { ChatOpenAI } from "langchain/chat_models";
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { PromptTemplate } from "langchain/prompts";
+import { ChatOpenAI } from "@langchain/openai";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import { Chroma } from "@langchain/community/vectorstores/chroma";
+import { PromptTemplate } from "@langchain/core/prompts";
 import { LLMChain } from "langchain/chains";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 
 const template = `
-You are a smart contract auditor. 
+You are a smart contract auditor.
 
-RULEBOOK SECTION:
-{rules}
+RULEBOOK SECTION: {rules}
 
-CODE CHUNK:
-{code}
+CODE CHUNK: {code}
 
 Analyze the code against these rules. List any violations with explanations.
 `;
@@ -31,7 +29,8 @@ export async function POST(req: NextRequest) {
 
   // 2️⃣ Embed and store in vector DB
   const embeddings = new OpenAIEmbeddings();
-  const vectorStore = await Chroma.fromTexts(ruleChunks, embeddings, {
+  const vectorStore = await Chroma.fromTexts(ruleChunks, [], {
+    embeddings,
     collectionName: "rulebook",
   });
 
