@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ChatOpenAI } from "@langchain/openai";
-import { OpenAIEmbeddings } from "@langchain/openai";
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { LLMChain } from "langchain/chains";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import fs from 'fs/promises'; 
 
 const template = `
 You are a smart contract auditor.
@@ -17,27 +17,32 @@ Analyze the code against these rules. List any violations with explanations.
 `;
 
 export async function POST(req: NextRequest) {
-  const { rulebook, contract } = await req.json();
+  const { contract } = await req.json();
 
+  const rulebookPath = process.cwd() + '/data/rulebook.txt'; // or wherever your file is
+  const rulebookText = await fs.readFile(rulebookPath, 'utf8');
+
+  // 2️⃣ Split rulebook into chunks
   const textSplitter = new RecursiveCharacterTextSplitter({
     chunkSize: 500,
     chunkOverlap: 50,
   });
+  const ruleChunks = await textSplitter.splitText(rulebookText);
 
-  // 1️⃣ Split the rulebook
-  const ruleChunks = await textSplitter.splitText(rulebook);
-
-  // 2️⃣ Embed and store in vector DB
+  // 3️⃣ Embed and store in vector DB
   const embeddings = new OpenAIEmbeddings();
-  const vectorStore = await Chroma.fromTexts(ruleChunks, [], {
+  const vectorStore = await Chroma.fromTexts(
+    ruleChunks,
+    [],
     embeddings,
-    collectionName: "rulebook",
-  });
-
-  // 3️⃣ Split the contract
+    {
+      collectionName: "rulebook",
+    }
+  );
+  // 4️⃣ Split contract
   const contractChunks = await textSplitter.splitText(contract);
 
-  // 4️⃣ Prepare the LLM
+  // 5️⃣ Set up LLM chain
   const llm = new ChatOpenAI({ temperature: 0 });
   const prompt = new PromptTemplate({
     template,
@@ -48,11 +53,9 @@ export async function POST(req: NextRequest) {
   let allResults = "";
 
   for (const chunk of contractChunks) {
-    // 5️⃣ Retrieve top-k rules
     const relevantDocs = await vectorStore.similaritySearch(chunk, 5);
-    const rulesText = relevantDocs.map((doc: { pageContent: any; }) => doc.pageContent).join("\n");
+    const rulesText = relevantDocs.map((doc: { pageContent: string }) => doc.pageContent).join("\n");
 
-    // 6️⃣ Call LLM
     const response = await chain.call({ rules: rulesText, code: chunk });
 
     allResults += `\n\n---\nCODE CHUNK:\n${chunk}\n\nAnalysis:\n${response.text}`;
